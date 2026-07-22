@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TETRIX — Play Tetris Instantly in Your Browser</title>
+<meta name="description" content="A web Tetris game. Watch the AI demo, then play instantly.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #0a0e27;
+  --bg-panel: #131a3a;
+  --bg-panel-light: #1c2452;
+  --accent-cyan: #00f5ff;
+  --accent-magenta: #ff2e97;
+  --accent-yellow: #ffe135;
+  --text-main: #eef2ff;
+  --text-dim: #8a93c4;
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --font-display: 'Press Start 2P', monospace;
+  --font-mono: 'Space Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(ellipse at top, #131a3a 0%, #05070f 70%);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* CRT 스캔라인 오버레이 (신호 요소) */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.025) 0px,
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: overlay;
+}
+
+.hero {
+  text-align: center;
+  padding: 56px 20px 24px;
+}
+
+#logo-canvas {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.hero-tag {
+  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  margin-top: 4px;
+}
+
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 20px 60px;
+}
+
+.stage-frame {
+  background: linear-gradient(180deg, #1a2148, #0c1130);
+  border: 3px solid #2a3468;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 0 0 1px rgba(0, 245, 255, 0.06), 0 30px 60px rgba(0, 0, 0, 0.5), inset 0 0 40px rgba(0, 245, 255, 0.03);
+}
+
+.stage-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 8px 14px;
+}
+
+.badge {
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--accent-magenta);
+  background: rgba(255, 46, 151, 0.12);
+  border: 1px solid rgba(255, 46, 151, 0.4);
+  padding: 6px 10px;
+  border-radius: 4px;
+  animation: blink 1.4s steps(2) infinite;
+}
+.badge.live {
+  color: var(--accent-cyan);
+  background: rgba(0, 245, 255, 0.12);
+  border-color: rgba(0, 245, 255, 0.5);
+}
+@keyframes blink { 50% { opacity: 0.35; } }
+
+.caption {
+  color: var(--text-dim);
+  font-size: 12px;
+  flex: 1;
+}
+
+.ghost-btn {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text-main);
+  background: var(--bg-panel-light);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.ghost-btn:hover { border-color: var(--accent-cyan); background: #232c5e; }
+.ghost-btn:active { transform: scale(0.97); }
+.ghost-btn:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+.ghost-btn.full { width: 100%; margin: 4px 0 14px; }
+
+.stage-body {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.canvas-wrap {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #2a3468;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.6);
+  line-height: 0;
+  max-width: 100%;
+}
+
+#stage-canvas {
+  display: block;
+  image-rendering: pixelated;
+  max-width: 100%;
+  height: auto;
+}
+
+.stage-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 39, 0.85);
+  font-family: var(--font-display);
+}
+
+.sidebar {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stat-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-row { display: flex; gap: 10px; }
+.stat-row .stat-box.small { flex: 1; }
+
+.stat-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--accent-yellow);
+}
+.stat-row .stat-value { font-size: 15px; color: var(--accent-cyan); }
+
+#next-canvas { display: block; margin-top: 2px; }
+
+.controls-guide {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.controls-guide h3 {
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+.controls-guide ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.controls-guide li { font-size: 12px; color: var(--text-main); display: flex; align-items: center; gap: 6px; }
+kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #060a1e;
+  border: 1px solid #3a4380;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--accent-cyan);
+}
+
+.progress-track {
+  margin-top: 14px;
+  height: 6px;
+  background: #060a1e;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-magenta), var(--accent-cyan));
+  transition: width 0.1s linear;
+}
+
+.howto-section {
+  margin-bottom: 28px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 24px 26px;
+}
+.howto-section h2 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--accent-cyan);
+  margin: 0 0 12px;
+}
+.howto-section h2:not(:first-child) { margin-top: 22px; }
+.howto-section p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text-dim);
+  margin: 0 0 4px;
+}
+.howto-section strong { color: var(--text-main); }
+
+.howto-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.howto-list li {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.howto-list kbd {
+  flex-shrink: 0;
+}
+.howto-list strong {
+  color: var(--accent-yellow);
+  margin-right: 2px;
+}
+
+.howto-note {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border-soft);
+  font-size: 12px;
+}
+
+/* ---------- 모바일 터치 컨트롤 ---------- */
+.touch-controls {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 340px;
+  margin-top: 4px;
+  user-select: none;
+}
+.touch-row { display: flex; gap: 10px; }
+.touch-btn {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--text-main);
+  background: var(--bg-panel-light);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 16px 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-btn.wide { font-size: 13px; padding: 14px 4px; }
+.touch-btn:active { background: #2c3768; border-color: var(--accent-cyan); }
+
+@media (max-width: 720px), (pointer: coarse) {
+  .touch-controls { display: flex; }
+}
+
+/* ---------- 모달 (이니셜 입력 / 순위표) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(5, 7, 15, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-backdrop[hidden] { display: none; }
+.modal-box {
+  width: 100%;
+  max-width: 380px;
+  background: linear-gradient(180deg, #1a2148, #0c1130);
+  border: 2px solid #2a3468;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.modal-box h2 {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--accent-yellow);
+  margin: 0 0 14px;
+  text-align: center;
+}
+.modal-box p { font-size: 12px; color: var(--text-dim); text-align: center; margin: 0 0 16px; }
+
+.initials-input {
+  display: block;
+  width: 140px;
+  margin: 0 auto 16px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+  background: #060a1e;
+  border: 2px solid #3a4380;
+  border-radius: 8px;
+  padding: 10px 6px 10px 16px;
+}
+.initials-input:focus { outline: none; border-color: var(--accent-cyan); }
+
+.lb-table { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; max-height: 320px; overflow-y: auto; }
+.lb-row {
+  display: grid;
+  grid-template-columns: 32px 50px 1fr 70px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.lb-row--new { outline: 2px solid var(--accent-cyan); background: rgba(0, 245, 255, 0.08); }
+.lb-rank { color: var(--text-dim); text-align: center; }
+.lb-initials { font-family: var(--font-display); font-size: 11px; color: var(--accent-yellow); }
+.lb-score { color: var(--text-main); font-weight: 700; text-align: right; }
+.lb-date { color: var(--text-dim); font-size: 10px; text-align: right; }
+.lb-empty { text-align: center; color: var(--text-dim); font-size: 12px; padding: 20px 0; }
+
+.footer-note { font-size: 10px; margin-top: 6px; opacity: 0.7; }
+
+.about-section {
+
+  margin-top: 40px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+.about-section h2 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--accent-cyan);
+  margin-top: 0;
+}
+.about-section p { font-size: 13px; line-height: 1.8; color: var(--text-dim); }
+.about-section strong { color: var(--text-main); }
+
+footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 30px 20px 50px;
+}
+
+@media (max-width: 720px) {
+  .stage-body { flex-direction: column; align-items: center; }
+  .sidebar { width: 100%; max-width: 320px; }
+}
+
+</style>
+</head>
+<body>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="hero">
+  <canvas id="logo-canvas" width="640" height="140" aria-label="TETRIX logo"></canvas>
+  <p class="hero-tag">Blocks fall. Lines clear. Scores rise. Right now.</p>
+</header>
+
+<main>
+  <section class="howto-section">
+    <h2>How to Play</h2>
+    <p>Blocks (tetrominoes) fall from the top of the screen. Move and rotate each
+      block to stack it neatly on the floor or on other blocks. <strong>Fill a full
+      horizontal row and it clears, earning points.</strong> If the blocks stack up
+      to the top of the screen, the game ends.</p>
+
+    <h2>Controls</h2>
+    <ul class="howto-list">
+      <li><kbd>←</kbd><kbd>→</kbd> <strong>Move</strong> — Shift the falling block
+        left or right by one column.</li>
+      <li><kbd>↑</kbd> <strong>Rotate</strong> — Turn the block 90° to fit it into
+        the gap you need.</li>
+      <li><kbd>↓</kbd> <strong>Soft Drop</strong> — Hold to make the block fall
+        faster. You earn a small bonus for each row you drop.</li>
+      <li><kbd>Space</kbd> <strong>Hard Drop</strong> — Instantly drop the block
+        straight to the bottom. Use this once you've picked your spot.</li>
+      <li><kbd>P</kbd> <strong>Pause</strong> — Pause or resume the game.</li>
+      <li><kbd>M</kbd> <strong>Mute</strong> — Turn the music on or off.</li>
+    </ul>
+    <p class="howto-note">Below, an AI plays a live demo first. Once it ends
+      (or you hit Skip), you can play right away on the same screen.</p>
+  </section>
+
+  <section class="stage-section">
+    <div class="stage-frame">
+      <div class="stage-topbar">
+        <span id="stage-badge" class="badge">● DEMO</span>
+        <span id="stage-caption" class="caption">Watch the AI play automatically</span>
+        <button id="skip-demo-btn" class="ghost-btn">Skip to Play ▶</button>
+      </div>
+
+      <div class="stage-body">
+        <div class="canvas-wrap">
+          <canvas id="stage-canvas"></canvas>
+          <div id="stage-overlay" class="stage-overlay" hidden></div>
+        </div>
+
+        <div class="touch-controls" id="touch-controls">
+          <div class="touch-row">
+            <button class="touch-btn" data-action="left" aria-label="Move left">◀</button>
+            <button class="touch-btn" data-action="rotate" aria-label="Rotate">⟳</button>
+            <button class="touch-btn" data-action="right" aria-label="Move right">▶</button>
+          </div>
+          <div class="touch-row">
+            <button class="touch-btn wide" data-action="softdrop" aria-label="Soft drop">▼ Soft Drop</button>
+            <button class="touch-btn wide" data-action="harddrop" aria-label="Hard drop">⤓ Hard Drop</button>
+          </div>
+        </div>
+
+        <aside class="sidebar">
+          <div class="stat-box">
+            <span class="stat-label">SCORE</span>
+            <span id="stat-score" class="stat-value">0</span>
+          </div>
+          <div class="stat-row">
+            <div class="stat-box small">
+              <span class="stat-label">LEVEL</span>
+              <span id="stat-level" class="stat-value">0</span>
+            </div>
+            <div class="stat-box small">
+              <span class="stat-label">LINES</span>
+              <span id="stat-lines" class="stat-value">0</span>
+            </div>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">NEXT</span>
+            <canvas id="next-canvas" width="96" height="72"></canvas>
+          </div>
+
+          <button id="bgm-toggle-btn" class="ghost-btn full">🔇 Music On</button>
+          <button id="leaderboard-btn" class="ghost-btn full">🏆 High Scores</button>
+
+          <div class="controls-guide">
+            <h3>Controls</h3>
+            <ul>
+              <li><kbd>←</kbd><kbd>→</kbd> Move</li>
+              <li><kbd>↑</kbd> Rotate</li>
+              <li><kbd>↓</kbd> Soft Drop</li>
+              <li><kbd>Space</kbd> Hard Drop</li>
+              <li><kbd>P</kbd> Pause &nbsp; <kbd>M</kbd> Mute</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+
+      <div id="demo-progress-track" class="progress-track">
+        <div id="demo-progress-fill" class="progress-fill"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-section">
+    <h2>Scoring</h2>
+    <p>Standard guideline Tetris rules apply. Clearing lines at once scores
+      <strong>40 / 100 / 300 / 1200 points for 1 / 2 / 3 / 4 lines</strong>,
+      multiplied by <strong>(level + 1)</strong>. Soft drop adds 1 point per row,
+      hard drop adds 2 points per row. The level rises every 10 lines cleared,
+      and the game speeds up.</p>
+  </section>
+</main>
+
+<footer>
+  <p>Made with vanilla JS &amp; Web Audio API · A static site, ready for GitHub Pages</p>
+  <p class="footer-note">High scores are saved in your own browser only — they're not shared with other visitors.</p>
+</footer>
+
+<div id="modal-backdrop" class="modal-backdrop" hidden>
+  <div id="modal-box" class="modal-box"></div>
+</div>
+
+<script>
+
+/* ---- js/engine.js ---- */
+/* =========================================================
+   TETRIX - Core Engine
+   보드/블록/회전/충돌판정/라인클리어/점수 계산을 담당하는
+   순수 로직 모듈. DOM이나 캔버스에 의존하지 않는다.
+   ========================================================= */
+
+const COLS = 10;
+const ROWS = 20;
+
+// 각 테트로미노를 4x4 격자 안에서 4가지 회전 상태로 정의
+const SHAPE_DEFS = {
+  I: ["0000,1111,0000,0000", "0010,0010,0010,0010", "0000,0000,1111,0000", "0100,0100,0100,0100"],
+  O: ["0110,0110,0000,0000", "0110,0110,0000,0000", "0110,0110,0000,0000", "0110,0110,0000,0000"],
+  T: ["0100,1110,0000,0000", "0100,0110,0100,0000", "0000,1110,0100,0000", "0100,1100,0100,0000"],
+  S: ["0110,1100,0000,0000", "0100,0110,0010,0000", "0000,0110,1100,0000", "1000,1100,0100,0000"],
+  Z: ["1100,0110,0000,0000", "0010,0110,0100,0000", "0000,1100,0110,0000", "0100,1100,1000,0000"],
+  J: ["1000,1110,0000,0000", "0110,0100,0100,0000", "0000,1110,0010,0000", "0100,0100,1100,0000"],
+  L: ["0010,1110,0000,0000", "0100,0100,0110,0000", "0000,1110,1000,0000", "1100,0100,0100,0000"]
+};
+
+const COLORS = {
+  I: "#00f5ff",
+  O: "#ffe135",
+  T: "#c15dff",
+  S: "#39ff88",
+  Z: "#ff3b6b",
+  J: "#4d7bff",
+  L: "#ff9f1c"
+};
+
+const PIECE_KEYS = Object.keys(SHAPE_DEFS);
+
+function parseShape(str) {
+  return str.split(",").map(row => row.split("").map(Number));
+}
+
+// 미리 파싱해둔 회전 테이블: SHAPES[type][rotation] -> [[x,y],...]
+const SHAPES = {};
+for (const key of PIECE_KEYS) {
+  SHAPES[key] = SHAPE_DEFS[key].map(rowStr => {
+    const grid = parseShape(rowStr);
+    const cells = [];
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        if (grid[y][x]) cells.push([x, y]);
+      }
+    }
+    return cells;
+  });
+}
+
+// 클래식 가이드라인 점수표 (레벨 보정 전 기본값)
+const LINE_SCORE = [0, 40, 100, 300, 1200];
+
+function randomBag() {
+  const bag = [...PIECE_KEYS];
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [bag[i], bag[j]] = [bag[j], bag[i]];
+  }
+  return bag;
+}
+
+class Piece {
+  constructor(type) {
+    this.type = type;
+    this.rotation = 0;
+    this.x = 3;
+    this.y = -1;
+  }
+  cells(rotation = this.rotation) {
+    return SHAPES[this.type][rotation];
+  }
+}
+
+class Board {
+  constructor() {
+    this.grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    this.bag = randomBag();
+    this.nextBag = randomBag();
+    this.current = null;
+    this.score = 0;
+    this.lines = 0;
+    this.level = 0;
+    this.gameOver = false;
+    this.spawnNext();
+  }
+
+  takeFromBag() {
+    if (this.bag.length === 0) {
+      this.bag = this.nextBag;
+      this.nextBag = randomBag();
+    }
+    return this.bag.shift();
+  }
+
+  spawnNext() {
+    const type = this.takeFromBag();
+    this.current = new Piece(type);
+    this.peekType = this.bag[0] || this.nextBag[0];
+    if (this.collides(this.current, 0, 0, this.current.rotation)) {
+      this.gameOver = true;
+    }
+  }
+
+  collides(piece, dx, dy, rotation) {
+    const cells = piece.cells(rotation);
+    for (const [cx, cy] of cells) {
+      const x = piece.x + cx + dx;
+      const y = piece.y + cy + dy;
+      if (x < 0 || x >= COLS || y >= ROWS) return true;
+      if (y >= 0 && this.grid[y][x]) return true;
+    }
+    return false;
+  }
+
+  move(dx, dy) {
+    if (!this.current || this.gameOver) return false;
+    if (!this.collides(this.current, dx, dy, this.current.rotation)) {
+      this.current.x += dx;
+      this.current.y += dy;
+      return true;
+    }
+    return false;
+  }
+
+  rotate(dir = 1) {
+    if (!this.current || this.gameOver) return false;
+    const p = this.current;
+    const newRotation = (p.rotation + dir + 4) % 4;
+    // 간단한 wall-kick: 0, -1, 1, -2, 2 순서로 시도
+    const kicks = [0, -1, 1, -2, 2];
+    for (const k of kicks) {
+      if (!this.collides(p, k, 0, newRotation)) {
+        p.x += k;
+        p.rotation = newRotation;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  hardDrop() {
+    if (!this.current || this.gameOver) return 0;
+    let dist = 0;
+    while (!this.collides(this.current, 0, 1, this.current.rotation)) {
+      this.current.y += 1;
+      dist++;
+    }
+    this.score += dist * 2; // 하드드롭 1칸당 2점 (가이드라인 규칙)
+    this.lock();
+    return dist;
+  }
+
+  softDropStep() {
+    if (this.move(0, 1)) {
+      this.score += 1; // 소프트드롭 1칸당 1점
+      return true;
+    }
+    return false;
+  }
+
+  ghostY() {
+    if (!this.current) return 0;
+    let y = this.current.y;
+    while (!this.collides(this.current, 0, y - this.current.y + 1, this.current.rotation)) {
+      y++;
+    }
+    return y;
+  }
+
+  lock() {
+    const p = this.current;
+    if (!p) return;
+    for (const [cx, cy] of p.cells()) {
+      const x = p.x + cx;
+      const y = p.y + cy;
+      if (y >= 0) this.grid[y][x] = p.type;
+    }
+    const cleared = this.clearLines();
+    if (!this.gameOver) this.spawnNext();
+    return cleared;
+  }
+
+  clearLines() {
+    let cleared = 0;
+    for (let y = ROWS - 1; y >= 0; y--) {
+      if (this.grid[y].every(cell => cell !== null)) {
+        this.grid.splice(y, 1);
+        this.grid.unshift(Array(COLS).fill(null));
+        cleared++;
+        y++; // 같은 인덱스 재검사
+      }
+    }
+    if (cleared > 0) {
+      this.score += LINE_SCORE[cleared] * (this.level + 1);
+      this.lines += cleared;
+      this.level = Math.floor(this.lines / 10);
+    }
+    return cleared;
+  }
+
+  dropIntervalMs() {
+    // 레벨이 오를수록 빨라짐 (하한 100ms)
+    return Math.max(1000 - this.level * 75, 100);
+  }
+}
+
+window.TetrixEngine = { COLS, ROWS, COLORS, PIECE_KEYS, Board, Piece };
+
+
+/* ---- js/render.js ---- */
+/* =========================================================
+   TETRIX - Renderer
+   Board 상태를 canvas 2D에 그리는 함수 모음
+   ========================================================= */
+
+function drawBlock(ctx, px, py, size, color, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // 본체
+  ctx.fillStyle = color;
+  ctx.fillRect(px, py, size, size);
+  // 픽셀 베벨(입체) 효과
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(px, py, size, Math.max(2, size * 0.14));
+  ctx.fillRect(px, py, Math.max(2, size * 0.14), size);
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(px, py + size - Math.max(2, size * 0.14), size, Math.max(2, size * 0.14));
+  ctx.fillRect(px + size - Math.max(2, size * 0.14), py, Math.max(2, size * 0.14), size);
+  ctx.strokeStyle = "rgba(0,0,0,0.45)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
+  ctx.restore();
+}
+
+function drawBoard(ctx, board, cellSize, opts = {}) {
+  const { COLS, ROWS, COLORS } = window.TetrixEngine;
+  const w = COLS * cellSize;
+  const h = ROWS * cellSize;
+
+  // 배경
+  ctx.fillStyle = "#0a0e27";
+  ctx.fillRect(0, 0, w, h);
+
+  // 그리드 라인
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * cellSize, 0);
+    ctx.lineTo(x * cellSize, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * cellSize);
+    ctx.lineTo(w, y * cellSize);
+    ctx.stroke();
+  }
+
+  // 고정된 블록
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const cell = board.grid[y][x];
+      if (cell) drawBlock(ctx, x * cellSize, y * cellSize, cellSize, COLORS[cell]);
+    }
+  }
+
+  // 고스트 피스
+  if (board.current && !board.gameOver && opts.showGhost !== false) {
+    const gy = board.ghostY();
+    for (const [cx, cy] of board.current.cells()) {
+      const x = board.current.x + cx;
+      const y = gy + cy;
+      if (y >= 0) drawBlock(ctx, x * cellSize, y * cellSize, cellSize, COLORS[board.current.type], 0.18);
+    }
+  }
+
+  // 현재 낙하 중인 피스
+  if (board.current && !board.gameOver) {
+    for (const [cx, cy] of board.current.cells()) {
+      const x = board.current.x + cx;
+      const y = board.current.y + cy;
+      if (y >= 0) drawBlock(ctx, x * cellSize, y * cellSize, cellSize, COLORS[board.current.type]);
+    }
+  }
+}
+
+function drawNextPreview(ctx, type, cellSize = 18) {
+  const { COLORS, PIECE_KEYS } = window.TetrixEngine;
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  if (!type) return;
+  const shape = window.TetrixEngine.Board ? null : null;
+  // 4x4 셀 중 실제 채워진 셀만 그리기 (SHAPES 접근을 위해 임시 Piece 사용)
+  const engine = window.TetrixEngine;
+  const tmp = new engine.Piece(type);
+  const cells = tmp.cells(0);
+  const minX = Math.min(...cells.map(c => c[0]));
+  const maxX = Math.max(...cells.map(c => c[0]));
+  const minY = Math.min(...cells.map(c => c[1]));
+  const maxY = Math.max(...cells.map(c => c[1]));
+  const w = (maxX - minX + 1) * cellSize;
+  const h = (maxY - minY + 1) * cellSize;
+  const offX = (ctx.canvas.width - w) / 2;
+  const offY = (ctx.canvas.height - h) / 2;
+  for (const [cx, cy] of cells) {
+    drawBlock(ctx, offX + (cx - minX) * cellSize, offY + (cy - minY) * cellSize, cellSize, COLORS[type]);
+  }
+}
+
+window.TetrixRender = { drawBlock, drawBoard, drawNextPreview };
+
+
+/* ---- js/audio.js ---- */
+/* =========================================================
+   TETRIX - Chiptune Audio Engine
+   외부 음원 파일 없이 Web Audio API 오실레이터로
+   배경음악과 효과음을 실시간 합성한다.
+   ========================================================= */
+
+const NOTE_FREQ = {
+  "C3": 130.81, "D3": 146.83, "E3": 164.81, "F3": 174.61, "G3": 196.00, "A3": 220.00, "B3": 246.94,
+  "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23, "G4": 392.00, "A4": 440.00, "B4": 493.88,
+  "C5": 523.25, "D5": 587.33, "E5": 659.25, "F5": 698.46, "G5": 783.99, "A5": 880.00, "B5": 987.77,
+  "C6": 1046.50, "REST": 0
+};
+
+// A마이너 기반의 8비트풍 오리지널 루프 멜로디 (2마디 x 2 = 총 32스텝)
+const MELODY = [
+  "A4", "REST", "C5", "B4", "A4", "REST", "E4", "REST",
+  "A4", "REST", "C5", "D5", "E5", "REST", "D5", "C5",
+  "B4", "REST", "D5", "C5", "B4", "REST", "G4", "REST",
+  "A4", "B4", "C5", "REST", "A4", "REST", "REST", "REST"
+];
+const BASS = [
+  "A3", "A3", "REST", "A3", "F3", "F3", "REST", "F3",
+  "A3", "A3", "REST", "A3", "E3", "E3", "REST", "E3",
+  "D3", "D3", "REST", "D3", "G3", "G3", "REST", "G3",
+  "A3", "A3", "REST", "A3", "E3", "E3", "REST", "REST"
+];
+
+class ChiptuneAudio {
+  constructor() {
+    this.ctx = null;
+    this.masterGain = null;
+    this.musicGain = null;
+    this.sfxGain = null;
+    this.playing = false;
+    this.stepIndex = 0;
+    this.stepMs = 165;
+    this.timer = null;
+    this.muted = false;
+  }
+
+  ensureContext() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.value = 0.5;
+      this.masterGain.connect(this.ctx.destination);
+
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = 0.22;
+      this.musicGain.connect(this.masterGain);
+
+      this.sfxGain = this.ctx.createGain();
+      this.sfxGain.gain.value = 0.35;
+      this.sfxGain.connect(this.masterGain);
+    }
+    if (this.ctx.state === "suspended") this.ctx.resume();
+  }
+
+  tone(freq, duration, type, gainNode, startOffset = 0, peak = 0.5) {
+    if (!freq) return;
+    const t0 = this.ctx.currentTime + startOffset;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+    osc.connect(g);
+    g.connect(gainNode);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.02);
+  }
+
+  startMusic() {
+    this.ensureContext();
+    if (this.playing) return;
+    this.playing = true;
+    const step = () => {
+      if (!this.playing) return;
+      const note = MELODY[this.stepIndex % MELODY.length];
+      const bass = BASS[this.stepIndex % BASS.length];
+      this.tone(NOTE_FREQ[note], 0.18, "square", this.musicGain, 0, 0.35);
+      this.tone(NOTE_FREQ[bass], 0.22, "triangle", this.musicGain, 0, 0.4);
+      this.stepIndex++;
+      this.timer = setTimeout(step, this.stepMs);
+    };
+    step();
+  }
+
+  stopMusic() {
+    this.playing = false;
+    if (this.timer) clearTimeout(this.timer);
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.masterGain) this.masterGain.gain.value = this.muted ? 0 : 0.5;
+    return this.muted;
+  }
+
+  sfxMove() { this.ensureContext(); this.tone(220, 0.05, "square", this.sfxGain, 0, 0.2); }
+  sfxRotate() { this.ensureContext(); this.tone(440, 0.06, "square", this.sfxGain, 0, 0.25); }
+  sfxLock() { this.ensureContext(); this.tone(140, 0.08, "square", this.sfxGain, 0, 0.3); }
+  sfxDrop() { this.ensureContext(); this.tone(90, 0.1, "sawtooth", this.sfxGain, 0, 0.25); }
+  sfxLevelUp() {
+    this.ensureContext();
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.15, "square", this.sfxGain, i * 0.09, 0.3));
+  }
+  sfxLineClear(count) {
+    this.ensureContext();
+    const base = 440;
+    for (let i = 0; i < count; i++) {
+      this.tone(base + i * 120, 0.12, "square", this.sfxGain, i * 0.06, 0.35);
+    }
+  }
+  sfxGameOver() {
+    this.ensureContext();
+    [392, 349.23, 293.66, 220].forEach((f, i) => this.tone(f, 0.35, "triangle", this.sfxGain, i * 0.18, 0.35));
+  }
+}
+
+window.TetrixAudio = new ChiptuneAudio();
+
+
+/* ---- js/bot.js ---- */
+/* =========================================================
+   TETRIX - Demo Bot
+   실제 영상 대신, 휴리스틱 AI가 보드를 분석해 최적의 위치를
+   찾아 스스로 플레이하는 모습을 보여주는 "라이브 데모" 엔진.
+   ========================================================= */
+
+const W_HEIGHT = -0.510066;
+const W_LINES = 0.760666;
+const W_HOLES = -0.35663;
+const W_BUMPY = -0.184483;
+
+function cloneGridWith(board, piece) {
+  const { ROWS, COLS } = window.TetrixEngine;
+  const grid = board.grid.map(row => row.slice());
+  for (const [cx, cy] of piece.cells()) {
+    const x = piece.x + cx;
+    const y = piece.y + cy;
+    if (y >= 0 && y < ROWS && x >= 0 && x < COLS) grid[y][x] = piece.type;
+  }
+  return grid;
+}
+
+function evaluateGrid(grid) {
+  const { ROWS, COLS } = window.TetrixEngine;
+  const heights = Array(COLS).fill(0);
+  for (let x = 0; x < COLS; x++) {
+    for (let y = 0; y < ROWS; y++) {
+      if (grid[y][x]) { heights[x] = ROWS - y; break; }
+    }
+  }
+  let holes = 0;
+  for (let x = 0; x < COLS; x++) {
+    let seenBlock = false;
+    for (let y = 0; y < ROWS; y++) {
+      if (grid[y][x]) seenBlock = true;
+      else if (seenBlock) holes++;
+    }
+  }
+  let bumpiness = 0;
+  for (let x = 0; x < COLS - 1; x++) bumpiness += Math.abs(heights[x] - heights[x + 1]);
+  const aggHeight = heights.reduce((a, b) => a + b, 0);
+  let linesCleared = 0;
+  for (let y = 0; y < ROWS; y++) if (grid[y].every(c => c)) linesCleared++;
+  return { aggHeight, holes, bumpiness, linesCleared };
+}
+
+// 특정 회전/열에 대해 낙하 시뮬레이션 후 점수 산출
+function simulatePlacement(board, type, rotation, targetX) {
+  const { Piece } = window.TetrixEngine;
+  const p = new Piece(type);
+  p.rotation = rotation;
+  p.x = targetX;
+  p.y = -2;
+  if (board.collides(p, 0, 0, rotation)) return null;
+  while (!board.collides(p, 0, 1, rotation)) p.y++;
+  const grid = cloneGridWith(board, p);
+  const { aggHeight, holes, bumpiness, linesCleared } = evaluateGrid(grid);
+  const score = W_HEIGHT * aggHeight + W_LINES * linesCleared + W_HOLES * holes + W_BUMPY * bumpiness;
+  return { rotation, x: targetX, score };
+}
+
+function findBestPlacement(board) {
+  const { COLS } = window.TetrixEngine;
+  const type = board.current.type;
+  let best = null;
+  for (let rotation = 0; rotation < 4; rotation++) {
+    for (let x = -2; x < COLS + 2; x++) {
+      const result = simulatePlacement(board, type, rotation, x);
+      if (result && (!best || result.score > best.score)) best = result;
+    }
+    if (type === "O") break; // O는 회전해도 동일하므로 1회만
+  }
+  return best;
+}
+
+class DemoBot {
+  constructor(board) {
+    this.board = board;
+    this.plan = null; // { rotation, x }
+    this.planned = false;
+  }
+
+  // 매 tick마다 한 번씩 호출. 계획을 세우고 한 단계씩 실행한다.
+  step() {
+    const board = this.board;
+    if (board.gameOver) return { locked: false };
+    if (!this.planned) {
+      this.plan = findBestPlacement(board);
+      this.planned = true;
+    }
+    if (!this.plan) {
+      // 배치할 곳이 없으면 그냥 떨어뜨림
+      const cleared = board.hardDrop();
+      this.planned = false;
+      return { locked: true, cleared };
+    }
+    const p = board.current;
+    if (p.rotation !== this.plan.rotation) {
+      board.rotate(1);
+      return { locked: false, action: "rotate" };
+    }
+    if (p.x < this.plan.x) {
+      board.move(1, 0);
+      return { locked: false, action: "move" };
+    }
+    if (p.x > this.plan.x) {
+      board.move(-1, 0);
+      return { locked: false, action: "move" };
+    }
+    // 목표 위치 도달 -> 하드드롭
+    const cleared = board.hardDrop();
+    this.planned = false;
+    return { locked: true, cleared };
+  }
+}
+
+window.TetrixBot = { DemoBot, findBestPlacement };
+
+
+/* ---- js/leaderboard.js ---- */
+/* =========================================================
+   TETRIX - Leaderboard
+   방문자의 브라우저에 최고 점수 10개를 저장한다 (서버 없음).
+   localStorage를 쓸 수 없는 환경(예: 미리보기 샌드박스)에서는
+   자동으로 메모리 저장으로 대체되어 오류 없이 동작한다.
+   ========================================================= */
+
+const LB_KEY = "tetrix_highscores_v1";
+const MAX_ENTRIES = 10;
+
+function safeGet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return (window.__tetrixMemoryStore && window.__tetrixMemoryStore[key]) || null;
+  }
+}
+
+function safeSet(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    window.__tetrixMemoryStore = window.__tetrixMemoryStore || {};
+    window.__tetrixMemoryStore[key] = value;
+  }
+}
+
+function getScores() {
+  return safeGet(LB_KEY) || [];
+}
+
+function qualifies(score) {
+  if (!score || score <= 0) return false;
+  const scores = getScores();
+  if (scores.length < MAX_ENTRIES) return true;
+  return score > scores[scores.length - 1].score;
+}
+
+function addScore(initials, score) {
+  const clean = (initials || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "AAA";
+  const scores = getScores();
+  scores.push({ initials: clean, score, date: new Date().toISOString().slice(0, 10) });
+  scores.sort((a, b) => b.score - a.score);
+  const trimmed = scores.slice(0, MAX_ENTRIES);
+  safeSet(LB_KEY, trimmed);
+  return trimmed;
+}
+
+function renderRows(scores, highlightIndex = -1) {
+  if (scores.length === 0) {
+    return `<p class="lb-empty">No scores yet — be the first!</p>`;
+  }
+  return `<div class="lb-table">${scores
+    .map((entry, i) => {
+      const rank = i + 1;
+      const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank;
+      const hl = i === highlightIndex ? " lb-row--new" : "";
+      return `<div class="lb-row${hl}">
+        <span class="lb-rank">${medal}</span>
+        <span class="lb-initials">${entry.initials}</span>
+        <span class="lb-score">${entry.score.toLocaleString()}</span>
+        <span class="lb-date">${entry.date}</span>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+window.TetrixLeaderboard = { getScores, qualifies, addScore, renderRows, MAX_ENTRIES };
+
+
+/* ---- js/main.js ---- */
+/* =========================================================
+   TETRIX - Main Orchestration
+   1) Falling pixel-block logo intro
+   2) AI demo (auto-play, stands in for a video)
+   3) Right when the demo ends, switch to real play on the spot
+   4) Keyboard + touch controls, score/level/next UI updates
+   5) High-score leaderboard (initials entry, stored per-browser)
+   ========================================================= */
+
+(function () {
+  const { Board, COLORS, COLS, ROWS } = window.TetrixEngine;
+  const { drawBoard, drawBlock, drawNextPreview } = window.TetrixRender;
+  const { DemoBot } = window.TetrixBot;
+  const audio = window.TetrixAudio;
+  const LB = window.TetrixLeaderboard;
+
+  const CELL = 28;
+
+  /* ---------- 1. Pixel logo intro ---------- */
+  const FONT = {
+    T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+    E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+    I: ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
+    X: ["10001", "10001", "01010", "00100", "01010", "10001", "10001"]
+  };
+  const WORD = ["T", "E", "T", "R", "I", "X"];
+  const PALETTE = [COLORS.I, COLORS.O, COLORS.T, COLORS.S, COLORS.Z, COLORS.J, COLORS.L];
+
+  function initLogo() {
+    const canvas = document.getElementById("logo-canvas");
+    const ctx = canvas.getContext("2d");
+    const px = Math.min(14, Math.floor(canvas.width / (WORD.length * 6 + 4)));
+    const gapCols = 1;
+    let totalCols = 0;
+    WORD.forEach(ch => (totalCols += FONT[ch][0].length + gapCols));
+    totalCols -= gapCols;
+    const startX = (canvas.width - totalCols * px) / 2;
+    const startY = (canvas.height - 7 * px) / 2;
+
+    const blocks = [];
+    let colorIdx = 0;
+    let colOffset = 0;
+    WORD.forEach(ch => {
+      const rows = FONT[ch];
+      for (let y = 0; y < rows.length; y++) {
+        for (let x = 0; x < rows[y].length; x++) {
+          if (rows[y][x] === "1") {
+            blocks.push({
+              finalX: startX + (colOffset + x) * px,
+              finalY: startY + y * px,
+              y: -px * (8 - y) - Math.random() * 220,
+              color: PALETTE[colorIdx % PALETTE.length],
+              landed: false,
+              delay: (colOffset + x) * 14 + Math.random() * 60,
+              vy: 0
+            });
+          }
+        }
+      }
+      colorIdx++;
+      colOffset += rows[0].length + gapCols;
+    });
+
+    let start = null;
+    function frame(ts) {
+      if (!start) start = ts;
+      const elapsed = ts - start;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let allLanded = true;
+      for (const b of blocks) {
+        if (elapsed < b.delay) {
+          allLanded = false;
+        } else if (!b.landed) {
+          b.vy += 1.6; // gravity acceleration
+          b.y += b.vy;
+          if (b.y >= b.finalY) {
+            b.y = b.finalY;
+            b.landed = true;
+          } else {
+            allLanded = false;
+          }
+        }
+        drawBlock(ctx, b.finalX, b.y, px, b.color);
+      }
+      if (!allLanded) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- 2. Demo (AI auto-play) ---------- */
+  const stageCanvas = document.getElementById("stage-canvas");
+  const stageCtx = stageCanvas.getContext("2d");
+  stageCanvas.width = COLS * CELL;
+  stageCanvas.height = ROWS * CELL;
+
+  const nextCanvas = document.getElementById("next-canvas");
+  const nextCtx = nextCanvas.getContext("2d");
+
+  const scoreEl = document.getElementById("stat-score");
+  const levelEl = document.getElementById("stat-level");
+  const linesEl = document.getElementById("stat-lines");
+  const badgeEl = document.getElementById("stage-badge");
+  const progressFill = document.getElementById("demo-progress-fill");
+  const skipBtn = document.getElementById("skip-demo-btn");
+  const bgmBtn = document.getElementById("bgm-toggle-btn");
+  const leaderboardBtn = document.getElementById("leaderboard-btn");
+  const modalBackdrop = document.getElementById("modal-backdrop");
+  const modalBox = document.getElementById("modal-box");
+
+  const DEMO_DURATION_MS = 42000;
+  let demoBoard = new Board();
+  let bot = new DemoBot(demoBoard);
+  let demoStart = null;
+  let demoRunning = true;
+  let demoRAF = null;
+  let demoAcc = 0;
+  let demoLastTs = null;
+  const DEMO_STEP_MS = 95;
+
+  function updateStats(board) {
+    scoreEl.textContent = board.score.toLocaleString();
+    levelEl.textContent = board.level;
+    linesEl.textContent = board.lines;
+    drawNextPreview(nextCtx, board.peekType);
+  }
+
+  function demoLoop(ts) {
+    if (!demoRunning) return;
+    if (demoStart === null) demoStart = ts;
+    if (demoLastTs === null) demoLastTs = ts;
+    const dt = ts - demoLastTs;
+    demoLastTs = ts;
+    demoAcc += dt;
+
+    while (demoAcc >= DEMO_STEP_MS) {
+      const result = bot.step();
+      if (result.locked) {
+        audio.sfxDrop();
+        if (result.cleared) audio.sfxLineClear(result.cleared);
+        if (demoBoard.gameOver) {
+          demoBoard = new Board();
+          bot = new DemoBot(demoBoard);
+        }
+      }
+      demoAcc -= DEMO_STEP_MS;
+    }
+
+    drawBoard(stageCtx, demoBoard, CELL);
+    updateStats(demoBoard);
+
+    const elapsed = ts - demoStart;
+    const pct = Math.min(100, (elapsed / DEMO_DURATION_MS) * 100);
+    progressFill.style.width = pct + "%";
+
+    if (elapsed >= DEMO_DURATION_MS) {
+      endDemo();
+      return;
+    }
+    demoRAF = requestAnimationFrame(demoLoop);
+  }
+
+  function endDemo() {
+    if (!demoRunning) return;
+    demoRunning = false;
+    if (demoRAF) cancelAnimationFrame(demoRAF);
+    badgeEl.textContent = "● LIVE";
+    badgeEl.classList.add("live");
+    skipBtn.style.display = "none";
+    document.getElementById("demo-progress-track").style.display = "none";
+    document.getElementById("stage-caption").textContent = "Your turn — play now!";
+    startGame();
+  }
+
+  skipBtn.addEventListener("click", endDemo);
+
+  /* ---------- 3. Real game ---------- */
+  let game = null;
+  let gameRunning = false;
+  let gameAcc = 0;
+  let gameLastTs = null;
+  let softDropping = false;
+  let paused = false;
+  let modalOpen = false;
+  let scoreHandledForThisGame = false;
+
+  function startGame() {
+    game = new Board();
+    gameRunning = true;
+    gameAcc = 0;
+    gameLastTs = null;
+    softDropping = false;
+    paused = false;
+    scoreHandledForThisGame = false;
+    updateStats(game);
+    requestAnimationFrame(gameLoop);
+  }
+
+  function gameLoop(ts) {
+    if (!gameRunning) return;
+    if (gameLastTs === null) gameLastTs = ts;
+    const dt = ts - gameLastTs;
+    gameLastTs = ts;
+
+    if (!paused && !modalOpen && !game.gameOver) {
+      gameAcc += dt;
+      const interval = softDropping ? Math.min(50, game.dropIntervalMs()) : game.dropIntervalMs();
+      while (gameAcc >= interval) {
+        gameAcc -= interval;
+        const prevLevel = game.level;
+        if (softDropping) {
+          const moved = game.softDropStep();
+          if (!moved) {
+            const cleared = game.lock();
+            handleLockEffects(cleared, prevLevel);
+          }
+        } else {
+          if (!game.move(0, 1)) {
+            const cleared = game.lock();
+            handleLockEffects(cleared, prevLevel);
+          }
+        }
+      }
+    }
+
+    drawBoard(stageCtx, game, CELL);
+    updateStats(game);
+
+    if (game.gameOver) {
+      drawGameOver();
+      if (!scoreHandledForThisGame) {
+        scoreHandledForThisGame = true;
+        audio.sfxGameOver();
+        handleGameOverScore();
+      }
+      return;
+    }
+    requestAnimationFrame(gameLoop);
+  }
+
+  function handleLockEffects(cleared, prevLevel) {
+    audio.sfxLock();
+    if (cleared) {
+      audio.sfxLineClear(cleared);
+      if (game.level > prevLevel) audio.sfxLevelUp();
+    }
+  }
+
+  function drawGameOver() {
+    stageCtx.save();
+    stageCtx.fillStyle = "rgba(10,14,39,0.82)";
+    stageCtx.fillRect(0, 0, stageCanvas.width, stageCanvas.height);
+    stageCtx.fillStyle = "#ff3b6b";
+    stageCtx.font = "bold 22px 'Press Start 2P', monospace";
+    stageCtx.textAlign = "center";
+    stageCtx.fillText("GAME OVER", stageCanvas.width / 2, stageCanvas.height / 2 - 10);
+    stageCtx.fillStyle = "#eef2ff";
+    stageCtx.font = "12px 'Space Mono', monospace";
+    stageCtx.fillText("Press Enter or tap to restart", stageCanvas.width / 2, stageCanvas.height / 2 + 24);
+    stageCtx.restore();
+  }
+
+  function restartGame() {
+    if (!game || !game.gameOver || modalOpen) return;
+    startGame();
+  }
+
+  /* ---------- Leaderboard modal ---------- */
+  function showModal(html) {
+    modalBox.innerHTML = html;
+    modalBackdrop.hidden = false;
+    modalOpen = true;
+  }
+  function hideModal() {
+    modalBackdrop.hidden = true;
+    modalBox.innerHTML = "";
+    modalOpen = false;
+  }
+
+  function handleGameOverScore() {
+    const score = game.score;
+    if (LB.qualifies(score)) {
+      openInitialsModal(score);
+    }
+  }
+
+  function openInitialsModal(score) {
+    showModal(`
+      <h2>New High Score!</h2>
+      <p>${score.toLocaleString()} points — enter your initials</p>
+      <input id="initials-input" class="initials-input" maxlength="3" autocomplete="off" autocapitalize="characters" placeholder="AAA">
+      <button id="initials-save-btn" class="ghost-btn full">Save Score</button>
+    `);
+    const input = document.getElementById("initials-input");
+    const saveBtn = document.getElementById("initials-save-btn");
+    input.focus();
+
+    input.addEventListener("input", () => {
+      input.value = input.value.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 3);
+    });
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") save();
+    });
+    saveBtn.addEventListener("click", save);
+
+    function save() {
+      const list = LB.addScore(input.value, score);
+      const idx = list.findIndex(e => e.score === score);
+      openLeaderboardModal(idx, true);
+    }
+  }
+
+  function openLeaderboardModal(highlightIndex = -1, offerRestart = false) {
+    const list = LB.getScores();
+    showModal(`
+      <h2>🏆 High Scores</h2>
+      ${LB.renderRows(list, highlightIndex)}
+      <button id="modal-close-btn" class="ghost-btn full">${offerRestart ? "Play Again" : "Close"}</button>
+    `);
+    document.getElementById("modal-close-btn").addEventListener("click", () => {
+      hideModal();
+      if (offerRestart) restartGame();
+    });
+  }
+
+  leaderboardBtn.addEventListener("click", () => openLeaderboardModal());
+  modalBackdrop.addEventListener("click", (e) => {
+    if (e.target === modalBackdrop) hideModal();
+  });
+
+  /* ---------- 4. Shared input actions (keyboard + touch) ---------- */
+  function canAct() {
+    return game && gameRunning && !game.gameOver && !paused && !modalOpen;
+  }
+  function actionMoveLeft() {
+    if (!canAct()) return;
+    game.move(-1, 0);
+    audio.sfxMove();
+  }
+  function actionMoveRight() {
+    if (!canAct()) return;
+    game.move(1, 0);
+    audio.sfxMove();
+  }
+  function actionRotate() {
+    if (!canAct()) return;
+    game.rotate(1);
+    audio.sfxRotate();
+  }
+  function actionHardDrop() {
+    if (!canAct()) return;
+    const prevLevel = game.level;
+    game.hardDrop();
+    audio.sfxDrop();
+    handleLockEffects(0, prevLevel);
+  }
+  function actionSoftDrop(on) {
+    softDropping = on && canAct();
+  }
+  function actionTogglePause() {
+    if (!game || game.gameOver || modalOpen) return;
+    paused = !paused;
+  }
+
+  /* ---------- Keyboard ---------- */
+  const heldKeys = new Set();
+  let dasTimer = null;
+  let dasInterval = null;
+
+  function clearDAS() {
+    clearTimeout(dasTimer);
+    clearInterval(dasInterval);
+    dasTimer = null;
+    dasInterval = null;
+  }
+
+  function startDAS(dir) {
+    clearDAS();
+    dasTimer = setTimeout(() => {
+      dasInterval = setInterval(() => {
+        if (canAct()) game.move(dir, 0);
+      }, 42);
+    }, 160);
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Spacebar"].includes(e.key)) {
+      e.preventDefault();
+    }
+    if (modalOpen) return;
+    if (!game || !gameRunning) return;
+
+    if (e.key === "Enter" && game.gameOver) {
+      restartGame();
+      return;
+    }
+    if (game.gameOver) return;
+
+    if (e.key.toLowerCase() === "p") {
+      actionTogglePause();
+      return;
+    }
+    if (paused) return;
+
+    if (heldKeys.has(e.key)) return;
+    heldKeys.add(e.key);
+
+    switch (e.key) {
+      case "ArrowLeft":
+        actionMoveLeft();
+        startDAS(-1);
+        break;
+      case "ArrowRight":
+        actionMoveRight();
+        startDAS(1);
+        break;
+      case "ArrowUp":
+        actionRotate();
+        break;
+      case "ArrowDown":
+        actionSoftDrop(true);
+        break;
+      case " ":
+      case "Spacebar":
+        actionHardDrop();
+        break;
+      case "m":
+      case "M":
+        toggleMusic();
+        break;
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    heldKeys.delete(e.key);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") clearDAS();
+    if (e.key === "ArrowDown") actionSoftDrop(false);
+  });
+
+  /* ---------- Touch controls (mobile) ---------- */
+  const touchButtons = document.querySelectorAll(".touch-btn");
+  touchButtons.forEach(btn => {
+    const action = btn.dataset.action;
+
+    const start = (e) => {
+      e.preventDefault();
+      if (game && game.gameOver && !modalOpen) {
+        restartGame();
+        return;
+      }
+      switch (action) {
+        case "left":
+          actionMoveLeft();
+          startDAS(-1);
+          break;
+        case "right":
+          actionMoveRight();
+          startDAS(1);
+          break;
+        case "rotate":
+          actionRotate();
+          break;
+        case "softdrop":
+          actionSoftDrop(true);
+          break;
+        case "harddrop":
+          actionHardDrop();
+          break;
+      }
+    };
+    const end = (e) => {
+      e.preventDefault();
+      if (action === "left" || action === "right") clearDAS();
+      if (action === "softdrop") actionSoftDrop(false);
+    };
+
+    btn.addEventListener("touchstart", start, { passive: false });
+    btn.addEventListener("touchend", end, { passive: false });
+    btn.addEventListener("touchcancel", end, { passive: false });
+    // Also support mouse, so the same buttons work on touch laptops / testing with a mouse
+    btn.addEventListener("mousedown", start);
+    btn.addEventListener("mouseup", end);
+    btn.addEventListener("mouseleave", end);
+  });
+
+  /* ---------- 5. Music toggle ---------- */
+  let musicOn = false;
+  function toggleMusic() {
+    musicOn = !musicOn;
+    audio.startMusic(); // the AudioContext needs a user gesture to actually play/resume
+    audio.muted = !musicOn;
+    if (audio.masterGain) audio.masterGain.gain.value = musicOn ? 0.5 : 0;
+    bgmBtn.textContent = musicOn ? "🔊 Music Off" : "🔇 Music On";
+  }
+  bgmBtn.addEventListener("click", toggleMusic);
+
+  /* ---------- Boot ---------- */
+  initLogo();
+  updateStats(demoBoard);
+  requestAnimationFrame(demoLoop);
+})();
+
+
+</script>
+</body>
+</html>
