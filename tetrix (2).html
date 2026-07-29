@@ -38,7 +38,6 @@ html, body {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-/* CRT 스캔라인 오버레이 (신호 요소) */
 .scanlines {
   position: fixed;
   inset: 0;
@@ -297,7 +296,6 @@ kbd {
   font-size: 12px;
 }
 
-/* ---------- 모바일 터치 컨트롤 ---------- */
 .touch-controls {
   display: none;
   flex-direction: column;
@@ -328,7 +326,6 @@ kbd {
   .touch-controls { display: flex; }
 }
 
-/* ---------- 모달 (이니셜 입력 / 순위표) ---------- */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -396,7 +393,6 @@ kbd {
 .footer-note { font-size: 10px; margin-top: 6px; opacity: 0.7; }
 
 .about-section {
-
   margin-top: 40px;
   background: var(--bg-panel);
   border: 1px solid var(--border-soft);
@@ -424,7 +420,6 @@ footer {
   .sidebar { width: 100%; max-width: 320px; }
 }
 
-/* ---------- 언어 전환 스위처 ---------- */
 .lang-switch {
   position: fixed;
   top: 14px;
@@ -461,7 +456,6 @@ footer {
   .lang-switch { top: 8px; right: 8px; padding: 4px; }
   .lang-btn { padding: 5px 8px; font-size: 10px; }
 }
-
 </style>
 </head>
 <body>
@@ -591,18 +585,10 @@ footer {
 </div>
 
 <script>
-
-/* ---- js/engine.js ---- */
-/* =========================================================
-   TETRIX - Core Engine
-   보드/블록/회전/충돌판정/라인클리어/점수 계산을 담당하는
-   순수 로직 모듈. DOM이나 캔버스에 의존하지 않는다.
-   ========================================================= */
-
+/* ---- Engine ---- */
 const COLS = 10;
 const ROWS = 20;
 
-// 각 테트로미노를 4x4 격자 안에서 4가지 회전 상태로 정의
 const SHAPE_DEFS = {
   I: ["0000,1111,0000,0000", "0010,0010,0010,0010", "0000,0000,1111,0000", "0100,0100,0100,0100"],
   O: ["0110,0110,0000,0000", "0110,0110,0000,0000", "0110,0110,0000,0000", "0110,0110,0000,0000"],
@@ -629,7 +615,6 @@ function parseShape(str) {
   return str.split(",").map(row => row.split("").map(Number));
 }
 
-// 미리 파싱해둔 회전 테이블: SHAPES[type][rotation] -> [[x,y],...]
 const SHAPES = {};
 for (const key of PIECE_KEYS) {
   SHAPES[key] = SHAPE_DEFS[key].map(rowStr => {
@@ -644,7 +629,6 @@ for (const key of PIECE_KEYS) {
   });
 }
 
-// 클래식 가이드라인 점수표 (레벨 보정 전 기본값)
 const LINE_SCORE = [0, 40, 100, 300, 1200];
 
 function randomBag() {
@@ -724,7 +708,6 @@ class Board {
     if (!this.current || this.gameOver) return false;
     const p = this.current;
     const newRotation = (p.rotation + dir + 4) % 4;
-    // 간단한 wall-kick: 0, -1, 1, -2, 2 순서로 시도
     const kicks = [0, -1, 1, -2, 2];
     for (const k of kicks) {
       if (!this.collides(p, k, 0, newRotation)) {
@@ -743,14 +726,14 @@ class Board {
       this.current.y += 1;
       dist++;
     }
-    this.score += dist * 2; // 하드드롭 1칸당 2점 (가이드라인 규칙)
+    this.score += dist * 2;
     this.lock();
     return dist;
   }
 
   softDropStep() {
     if (this.move(0, 1)) {
-      this.score += 1; // 소프트드롭 1칸당 1점
+      this.score += 1;
       return true;
     }
     return false;
@@ -787,7 +770,7 @@ class Board {
         this.grid.splice(y, 1);
         this.grid.unshift(Array(COLS).fill(null));
         cleared++;
-        y++; // 같은 인덱스 재검사
+        y++;
       }
     }
     if (cleared > 0) {
@@ -800,20 +783,13 @@ class Board {
   }
 
   dropIntervalMs() {
-    // 레벨이 오를수록 빨라짐 (하한 100ms)
     return Math.max(1000 - this.level * 75, 100);
   }
 }
 
 window.TetrixEngine = { COLS, ROWS, COLORS, PIECE_KEYS, Board, Piece };
 
-
-/* ---- js/render.js ---- */
-/* =========================================================
-   TETRIX - Renderer
-   Board 상태를 canvas 2D에 그리는 함수 모음
-   ========================================================= */
-
+/* ---- Renderer ---- */
 function drawBlock(ctx, px, py, size, color, alpha = 1) {
   px = Math.round(px);
   py = Math.round(py);
@@ -900,7 +876,7 @@ function drawBoard(ctx, board, cellSize, opts = {}) {
 }
 
 function drawNextPreview(ctx, type, cellSize = 18) {
-  const { COLORS, PIECE_KEYS } = window.TetrixEngine;
+  const { COLORS } = window.TetrixEngine;
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   if (!type) return;
   const engine = window.TetrixEngine;
@@ -921,8 +897,7 @@ function drawNextPreview(ctx, type, cellSize = 18) {
 
 window.TetrixRender = { drawBlock, drawBoard, drawNextPreview };
 
-
-/* ---- js/audio.js ---- */
+/* ---- Audio ---- */
 const NOTE_FREQ = {
   "C3": 130.81, "D3": 146.83, "E3": 164.81, "F3": 174.61, "G3": 196.00, "A3": 220.00, "B3": 246.94,
   "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23, "G4": 392.00, "A4": 440.00, "B4": 493.88,
@@ -1040,8 +1015,7 @@ class ChiptuneAudio {
 
 window.TetrixAudio = new ChiptuneAudio();
 
-
-/* ---- js/bot.js ---- */
+/* ---- Bot ---- */
 const W_HEIGHT = -0.510066;
 const W_LINES = 0.760666;
 const W_HOLES = -0.35663;
@@ -1125,8 +1099,7 @@ class DemoBot {
       this.planned = true;
     }
     if (!this.plan) {
-      board.hardDrop();
-      const cleared = board.lastClearedRows.length;
+      const cleared = board.hardDrop();
       this.planned = false;
       return { locked: true, cleared };
     }
@@ -1143,8 +1116,7 @@ class DemoBot {
       board.move(-1, 0);
       return { locked: false, action: "move" };
     }
-    board.hardDrop();
-    const cleared = board.lastClearedRows.length;
+    const cleared = board.hardDrop();
     this.planned = false;
     return { locked: true, cleared };
   }
@@ -1152,8 +1124,7 @@ class DemoBot {
 
 window.TetrixBot = { DemoBot, findBestPlacement };
 
-
-/* ---- js/leaderboard.js ---- */
+/* ---- Leaderboard ---- */
 const LB_KEY = "tetrix_highscores_v1";
 const MAX_ENTRIES = 10;
 
@@ -1217,8 +1188,7 @@ function renderRows(scores, highlightIndex = -1, emptyText = "No scores yet — 
 
 window.TetrixLeaderboard = { getScores, qualifies, addScore, renderRows, MAX_ENTRIES };
 
-
-/* ---- js/i18n.js ---- */
+/* ---- i18n ---- */
 const LANG_KEY = "tetrix_lang_v1";
 const SUPPORTED_LANGS = ["ko", "en", "zh"];
 
@@ -1425,8 +1395,7 @@ function applyStaticTranslations() {
 
 window.TetrixI18N = { t, getLang, setLang, applyStaticTranslations, SUPPORTED_LANGS };
 
-
-/* ---- js/main.js ---- */
+/* ---- Main Logic ---- */
 (function () {
   const { Board, COLORS, COLS, ROWS } = window.TetrixEngine;
   const { drawBoard, drawBlock, drawNextPreview } = window.TetrixRender;
@@ -2054,8 +2023,6 @@ window.TetrixI18N = { t, getLang, setLang, applyStaticTranslations, SUPPORTED_LA
   refreshDynamicTexts();
   requestAnimationFrame(demoLoop);
 })();
-
-
 </script>
 </body>
 </html>
