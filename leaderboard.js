@@ -9,7 +9,7 @@
    모드로 자동 동작합니다 — 아무것도 깨지지 않아요.
    ========================================================= */
 
-const FIREBASE_URL = ""; // 예: "https://tetrix-xxxxx-default-rtdb.asia-southeast1.firebasedatabase.app"
+const FIREBASE_URL = "https://unlv-tet-default-rtdb.firebaseio.com";
 
 const LB_KEY = "tetrix_highscores_v1";
 const MAX_ENTRIES = 20;
