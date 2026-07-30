@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TETRIX — Play Tetris Instantly in Your Browser</title>
+<meta name="description" content="A web Tetris game. Watch the AI demo, then play instantly.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #232c5e;
+  --accent-cyan: #00f5ff;
+  --accent-magenta: #ff2e97;
+  --accent-yellow: #ffe135;
+  --text-main: #eef2ff;
+  --text-dim: #aab2dc;
+  --font-display: 'Press Start 2P', monospace;
+  --font-mono: 'Space Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+.splash {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#intro-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* CRT 스캔라인 오버레이 (기존 사이트와 동일한 룩) */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.03) 0px,
+    rgba(255, 255, 255, 0.03) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: overlay;
+}
+
+/* 상단 SKIP 버튼 */
+.skip-btn {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-soft, rgba(255,255,255,0.25));
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.skip-btn:hover { border-color: var(--accent-cyan); color: var(--text-main); }
+
+/* 음소거 해제 안내 */
+.sound-hint {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.sound-hint:hover { color: var(--text-main); border-color: var(--accent-cyan); }
+
+/* 영상 종료 후 PLAY 오버레이 */
+.play-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: radial-gradient(ellipse at center, rgba(35,44,94,0.65) 0%, rgba(0,0,0,0.88) 75%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+.play-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.play-title {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 5vw, 34px);
+  color: var(--text-main);
+  text-align: center;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 12px var(--accent-cyan), 0 0 28px rgba(0,245,255,0.4);
+  animation: flicker 2.4s infinite;
+}
+
+@keyframes flicker {
+  0%, 92%, 100% { opacity: 1; }
+  94% { opacity: 0.75; }
+  96% { opacity: 1; }
+}
+
+.play-btn {
+  font-family: var(--font-display);
+  font-size: clamp(16px, 4vw, 22px);
+  color: #06121f;
+  background: linear-gradient(90deg, var(--accent-magenta), var(--accent-cyan));
+  border: none;
+  padding: 18px 46px;
+  border-radius: 10px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.15), 0 8px 30px rgba(0,245,255,0.35);
+  animation: pulse 1.6s ease-in-out infinite;
+  transition: transform 0.15s ease;
+}
+.play-btn:hover { transform: scale(1.05); }
+.play-btn:active { transform: scale(0.97); }
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,255,255,0.15), 0 8px 30px rgba(0,245,255,0.35); }
+  50% { box-shadow: 0 0 0 2px rgba(255,255,255,0.25), 0 8px 46px rgba(255,46,151,0.55); }
+}
+
+.play-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+</style>
+</head>
+<body>
+
+<div class="splash">
+  <video id="intro-video" src="video/intro.mp4" autoplay muted playsinline preload="auto"></video>
+  <div class="scanlines"></div>
+
+  <button id="skip-btn" class="skip-btn">Skip ▶</button>
+  <button id="sound-hint" class="sound-hint">🔇 탭하여 소리 켜기</button>
+
+  <div id="play-overlay" class="play-overlay">
+    <div class="play-title">TETRIX</div>
+    <button id="play-btn" class="play-btn">▶ PLAY</button>
+    <div class="play-sub">클릭하여 게임 시작</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const video = document.getElementById('intro-video');
+  const overlay = document.getElementById('play-overlay');
+  const playBtn = document.getElementById('play-btn');
+  const skipBtn = document.getElementById('skip-btn');
+  const soundHint = document.getElementById('sound-hint');
+  const DEST = 'game.html';
+
+  function showPlayOverlay() {
+    overlay.classList.add('show');
+    skipBtn.style.display = 'none';
+    soundHint.style.display = 'none';
+  }
+
+  // 자동재생 정책 대응: muted 상태로 시작, 사용자가 탭하면 소리 켜기
+  video.play().catch(() => {
+    // 자동재생이 완전히 막힌 브라우저의 경우 바로 재생 버튼을 보여줌
+  });
+
+  soundHint.addEventListener('click', () => {
+    video.muted = false;
+    soundHint.style.display = 'none';
+  });
+
+  video.addEventListener('ended', showPlayOverlay);
+
+  // 혹시 영상 로드 자체가 실패하면 바로 PLAY 화면으로
+  video.addEventListener('error', showPlayOverlay);
+
+  skipBtn.addEventListener('click', () => {
+    video.pause();
+    showPlayOverlay();
+  });
+
+  playBtn.addEventListener('click', () => {
+    window.location.href = DEST;
+  });
+})();
+</script>
+
+</body>
+</html>
